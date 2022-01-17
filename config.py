@@ -28,9 +28,10 @@ def getConfig():
     parser.add_argument('--lr_factor', type=float, default=0.1)
     parser.add_argument('--clipping', type=float, default=2, help='Gradient clipping')
     parser.add_argument('--patience', type=int, default=5, help="Scheduler ReduceLROnPlateau's parameter & Early Stopping(+5)")
-    parser.add_argument('--model_path', type=str, default='results/')
+    parser.add_argument('--model_path', type=str, default='results')
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--save_map', type=bool, default=None, help='Save prediction map')
+    parser.add_argument('--output_path', type=str, default='pred_map', help='path where output files will be saved')
 
 
     # Hardware settings

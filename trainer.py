@@ -1,6 +1,8 @@
 """
 author: Min Seok Lee and Wooseok Shin
 """
+import glob
+import ntpath
 import os
 import cv2
 import time
@@ -213,12 +215,13 @@ class Trainer():
 
 
 class Tester():
-    def __init__(self, args, save_path):
+    def __init__(self, args, save_path: str, have_gt: bool = True):
         super(Tester, self).__init__()
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.test_transform = get_test_augmentation(img_size=args.img_size)
         self.args = args
         self.save_path = save_path
+        self.have_gt = have_gt
 
         # Network
         self.model = self.model = TRACER(args).to(self.device)
@@ -232,13 +235,23 @@ class Tester():
         self.criterion = Criterion(args)
 
         te_img_folder = os.path.join(args.data_path, args.dataset, 'Test/images/')
-        te_gt_folder = os.path.join(args.data_path, args.dataset, 'Test/masks/')
+        te_gt_folder = os.path.join(args.data_path, args.dataset, 'Test/masks/') if self.have_gt else te_img_folder
         self.test_loader = get_loader(te_img_folder, te_gt_folder, edge_folder=None, phase='test',
                                       batch_size=args.batch_size, shuffle=False,
                                       num_workers=args.num_workers, transform=self.test_transform)
+        self.te_img_name_to_te_img_file = {
+            ntpath.basename(image_file).rpartition('.')[0]: image_file for image_file in sorted(glob.glob(te_img_folder + '/*'))
+        }
 
+        self.output_path: str = None
         if args.save_map is not None:
-            os.makedirs(os.path.join('pred_map', 'exp'+str(self.args.exp_num), self.args.dataset), exist_ok=True)
+            self.output_path = os.path.join(args.output_path, 'exp'+str(self.args.exp_num), self.args.dataset)
+            os.makedirs(self.output_path, exist_ok=True)
+
+    @staticmethod
+    def apply_mask(image: np.ndarray, mask: np.ndarray) -> np.ndarray:
+        b, g, r = cv2.split(image)
+        return cv2.merge([b, g, r, mask], 4)
 
     def test(self):
         self.model.eval()
@@ -259,34 +272,44 @@ class Tester():
                 H, W = original_size
 
                 for i in range(images.size(0)):
-                    mask = gt_to_tensor(masks[i])
                     h, w = H[i].item(), W[i].item()
+                    pred_mask = F.interpolate(outputs[i].unsqueeze(0), size=(h, w), mode='bilinear')
 
-                    output = F.interpolate(outputs[i].unsqueeze(0), size=(h, w), mode='bilinear')
-                    loss = self.criterion(output, mask)
-
-                    # Metric
-                    mae, max_f, avg_f, s_score = Eval_tool.cal_total_metrics(output, mask)
-                    
                     # Save prediction map
                     if self.args.save_map is not None:
-                        output = (output.squeeze().detach().cpu().numpy()*255.0).astype(np.uint8)   # convert uint8 type
-                        cv2.imwrite(os.path.join('pred_map', 'exp'+str(self.args.exp_num), self.args.dataset, image_name[i]+'.png'), output)
+                        pred_mask = (pred_mask.squeeze().detach().cpu().numpy()*255.0).astype(np.uint8)   # convert uint8 type
+                        if not self.have_gt:
+                            # read the original image file
+                            orig_image = cv2.imread(self.te_img_name_to_te_img_file[image_name[i]])
+                            orig_image = cv2.cvtColor(orig_image, cv2.COLOR_BGR2RGB)
+                            output_image = self.apply_mask(image=orig_image, mask=pred_mask)
+                        else:
+                            output_image = pred_mask
+                        cv2.imwrite(os.path.join(self.output_path, image_name[i]+'.png'), output_image)
 
-                    # log
-                    test_loss.update(loss.item(), n=1)
-                    test_mae.update(mae, n=1)
-                    test_maxf.update(max_f, n=1)
-                    test_avgf.update(avg_f, n=1)
-                    test_s_m.update(s_score, n=1)
+                    if self.have_gt:
+                        mask = gt_to_tensor(masks[i])
+                        loss = self.criterion(pred_mask, mask)
 
-            test_loss = test_loss.avg
-            test_mae = test_mae.avg
-            test_maxf = test_maxf.avg
-            test_avgf = test_avgf.avg
-            test_s_m = test_s_m.avg
+                        # Metric
+                        mae, max_f, avg_f, s_score = Eval_tool.cal_total_metrics(pred_mask, mask)
 
-        print(f'Test Loss:{test_loss:.4f} | MAX_F:{test_maxf:.4f} | MAE:{test_mae:.4f} '
-              f'| S_Measure:{test_s_m:.4f}, time: {time.time() - t:.3f}s')
+                        # log
+                        test_loss.update(loss.item(), n=1)
+                        test_mae.update(mae, n=1)
+                        test_maxf.update(max_f, n=1)
+                        test_avgf.update(avg_f, n=1)
+                        test_s_m.update(s_score, n=1)
+
+            if self.have_gt:
+                test_loss = test_loss.avg
+                test_mae = test_mae.avg
+                test_maxf = test_maxf.avg
+                test_avgf = test_avgf.avg
+                test_s_m = test_s_m.avg
+
+        if self.have_gt:
+            print(f'Test Loss:{test_loss:.4f} | MAX_F:{test_maxf:.4f} | MAE:{test_mae:.4f} '
+                  f'| S_Measure:{test_s_m:.4f}, time: {time.time() - t:.3f}s')
 
         return test_loss, test_mae, test_maxf, test_avgf, test_s_m
