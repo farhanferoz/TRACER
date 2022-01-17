@@ -69,13 +69,14 @@ class Test_DatasetGenerate(Dataset):
             augmented = self.transform(image=image)
             image = augmented['image']
 
-        return image, self.gts[idx], original_size, image_name
+        gt_image = None if self.gts is None else self.gts[idx]
+        return image, gt_image, original_size, image_name
 
     def __len__(self):
         return len(self.images)
 
 
-def get_loader(img_folder, gt_folder, edge_folder, phase: str, batch_size, shuffle,
+def get_loader(img_folder, gt_folder: str, edge_folder, phase: str, batch_size, shuffle,
                num_workers, transform, seed=None):
     if phase == 'test':
         dataset = Test_DatasetGenerate(img_folder, gt_folder, transform)

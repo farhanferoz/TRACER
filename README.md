@@ -57,10 +57,15 @@ python main.py train --arch 0 --img_size 320
 
 # For testing TRACER with pre-trained model (e.g.)  
 python main.py test --exp_num 0 --arch 0 --img_size 320
+
+# For foreground extraction (e.g.)
+python main.py apply --arch 4 --dataset TRACER_TEST --data_path ..\data --save_map True --output_path output
+
 </code></pre>
 * Pre-trained models of TRACER are available at [here](https://github.com/Karel911/TRACER/releases/tag/v1.0)
-* Change the model name as 'best_model.pth' and put the weights to the path 'results/DUTS/TEx_0/best_model.pth'  
-  (here, the x means the model scale e.g., 0 to 7).
+* For foreground extraction, copy these pre-trained models (*.pth files) to results/.
+* For testing change the model name as 'best_model.pth' and put the weights to the path 'results/<dataset>/TE<x>_0/best_model.pth'  
+  (here, <dataset> is the dataset name & <x> means the model scale e.g., 0 to 7).
 * Input image sizes for each model are listed belows.
 
 ## Configurations
